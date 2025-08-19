@@ -50,26 +50,48 @@ def get_repo_name() -> str:
     return path.split("/")[-1] if path else "unknown-repo"
 
 
-def build_prompt(style: str, branch: str, repo: str, diff: str = None, ignorediff: bool = False) -> str:
-    """Construct a style-aware prompt for commit message generation with context."""
+def build_prompt(
+    style: str, branch: str, repo: str, diff: str = None, ignorediff: bool = False
+) -> str:
+    """Construct a detailed prompt for commit message generation with context."""
+
     base = (
-        "You are a Git commit message generator.\n"
+        "You are an expert Git commit message generator.\n"
         "Rules:\n"
-        "- Only output the commit message (no explanations, no extra text).\n"
-        "- Must be a single short line.\n"
-        f"- Style: {style}.\n"
-        f"- Repository: {repo}.\n"
-        f"- Branch: {branch}.\n"
+        "- Output ONLY the commit message, nothing else.\n"
+        "- Must be a **single concise line**\n"
+        f"- Style: {style} (adapt tone accordingly).\n"
+        f"- Repository: {repo} (for context, not required in output).\n"
+        f"- Branch: {branch} (for context, not required in output).\n"
     )
+
     if not ignorediff and diff:
-        base += f"\nDiff:\n{diff}"
+        base += (
+            "\nHere is the staged diff:\n"
+            f"{diff}\n"
+            "\nFocus on summarizing WHAT and WHY, not HOW.\n"
+            "- Capture the main intent (e.g., feature, bugfix, refactor).\n"
+            "- Use file names, function/class names, and key changes if relevant.\n"
+        )
     else:
-        base += "\n(No diff provided — generate a message based on repo, branch, and style only.)"
+        base += (
+            "\nNo diff provided.\n"
+            "Generate a commit message based only on repo, branch, and style context.\n"
+        )
+
     return base
 
 
-def generate_with_ollama(style: str, temperature: float, model: str, branch: str, repo: str,
-                         diff: str = None, ignorediff: bool = False) -> str:
+
+def generate_with_ollama(
+    style: str,
+    temperature: float,
+    model: str,
+    branch: str,
+    repo: str,
+    diff: str = None,
+    ignorediff: bool = False,
+) -> str:
     """Generate commit message using Ollama."""
     if ollama is None:
         raise RuntimeError("Ollama not installed. Run `pip install ollama`.")
@@ -83,11 +105,20 @@ def generate_with_ollama(style: str, temperature: float, model: str, branch: str
     return response["message"]["content"].strip()
 
 
-def generate_with_gemini(style: str, temperature: float, model: str, branch: str, repo: str,
-                         diff: str = None, ignorediff: bool = False) -> str:
+def generate_with_gemini(
+    style: str,
+    temperature: float,
+    model: str,
+    branch: str,
+    repo: str,
+    diff: str = None,
+    ignorediff: bool = False,
+) -> str:
     """Generate commit message using Gemini (genai SDK)."""
     if genai is None:
-        raise RuntimeError("Google genai SDK not installed. Run `pip install google-genai`.")
+        raise RuntimeError(
+            "Google genai SDK not installed. Run `pip install google-genai`."
+        )
 
     client = genai.Client()
     prompt = build_prompt(style, branch, repo, diff, ignorediff)
@@ -99,7 +130,7 @@ def generate_with_gemini(style: str, temperature: float, model: str, branch: str
             temperature=temperature,
             top_p=1,
             top_k=40,
-        )
+        ),
     )
     return response.text.strip()
 
@@ -110,20 +141,42 @@ def run_git_commit(message: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AI-powered Git commit message generator")
-    parser.add_argument("--provider", choices=["ollama", "gemini"], default="ollama",
-                        help="Which provider to use (default: ollama)")
-    parser.add_argument("--style", default="normal",
-                        help="Message style (normal, humour, serious, poetic, etc.)")
-    parser.add_argument("--temperature", type=float, default=0.7,
-                        help="Sampling temperature (creativity). Default = 0.7")
-    parser.add_argument("--model", type=str,
-                        default="gemma3:4b",
-                        help="Model to use (default for ollama: gemma3:4b, for gemini: gemini-2.0-flash-lite)")
-    parser.add_argument("--commit", action="store_true",
-                        help="If set, ask for confirmation before committing with the generated message")
-    parser.add_argument("--ignorediff", action="store_true",
-                        help="Ignore the git diff and generate a commit message from context only")
+    parser = argparse.ArgumentParser(
+        description="AI-powered Git commit message generator"
+    )
+    parser.add_argument(
+        "--provider",
+        choices=["ollama", "gemini"],
+        default="ollama",
+        help="Which provider to use (default: ollama)",
+    )
+    parser.add_argument(
+        "--style",
+        default="normal",
+        help="Message style (normal, humour, serious, poetic, etc.)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.5,
+        help="Sampling temperature (creativity). Default = 1.5",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="gemma3:4b",
+        help="Model to use (default for ollama: gemma3:4b, for gemini: gemini-2.0-flash-lite)",
+    )
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="If set, ask for confirmation before committing with the generated message",
+    )
+    parser.add_argument(
+        "--ignorediff",
+        action="store_true",
+        help="Ignore the git diff and generate a commit message from context only",
+    )
     args = parser.parse_args()
 
     diff = None if args.ignorediff else get_git_diff()
@@ -138,19 +191,39 @@ def main():
     if args.provider == "gemini" and args.model == "gemma3:4b":
         args.model = "gemini-2.0-flash-lite"
 
-    print(f"Using provider: {args.provider}, model: {args.model}, style: {args.style}, "
-          f"temperature: {args.temperature}, branch: {branch}, repo: {repo}, ignorediff: {args.ignorediff}")
+    print(
+        f"Using provider: {args.provider}, model: {args.model}, style: {args.style}, "
+        f"temperature: {args.temperature}, branch: {branch}, repo: {repo}, ignorediff: {args.ignorediff}"
+    )
 
     if args.provider == "ollama":
-        commit_message = generate_with_ollama(args.style, args.temperature, args.model, branch, repo, diff, args.ignorediff)
+        commit_message = generate_with_ollama(
+            args.style,
+            args.temperature,
+            args.model,
+            branch,
+            repo,
+            diff,
+            args.ignorediff,
+        )
     else:
-        commit_message = generate_with_gemini(args.style, args.temperature, args.model, branch, repo, diff, args.ignorediff)
+        commit_message = generate_with_gemini(
+            args.style,
+            args.temperature,
+            args.model,
+            branch,
+            repo,
+            diff,
+            args.ignorediff,
+        )
 
     print("\nSuggested commit message:\n")
     print(commit_message)
 
     if args.commit:
-        confirm = input("\nDo you want to commit with this message? [y/N]: ").strip().lower()
+        confirm = (
+            input("\nDo you want to commit with this message? [y/N]: ").strip().lower()
+        )
         if confirm == "y":
             run_git_commit(commit_message)
             print("\n✅ Changes committed.")
