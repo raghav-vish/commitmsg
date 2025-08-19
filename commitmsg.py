@@ -117,7 +117,7 @@ def main():
                         default="gemma3:4b",
                         help="Model to use (default for ollama: gemma3:4b, for gemini: gemini-2.0-flash-lite)")
     parser.add_argument("--commit", action="store_true",
-                        help="If set, automatically run `git commit -m` with the generated message")
+                        help="If set, ask for confirmation before committing with the generated message")
     args = parser.parse_args()
 
     diff = get_git_diff()
@@ -144,8 +144,12 @@ def main():
     print(commit_message)
 
     if args.commit:
-        run_git_commit(commit_message)
-        print("\n✅ Changes committed.")
+        confirm = input("\nDo you want to commit with this message? [y/N]: ").strip().lower()
+        if confirm == "y":
+            run_git_commit(commit_message)
+            print("\n✅ Changes committed.")
+        else:
+            print("\n❌ Commit aborted.")
 
 
 if __name__ == "__main__":
