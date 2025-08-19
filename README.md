@@ -53,3 +53,7 @@ commitmsg --commit             # confirm + commit
 * Git
 * Ollama (if using local models)
 * Google Cloud creds (if using Gemini)
+
+
+
+Disclaimer - Completely vibe-coded, including this README.md
