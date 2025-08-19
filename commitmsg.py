@@ -50,27 +50,31 @@ def get_repo_name() -> str:
     return path.split("/")[-1] if path else "unknown-repo"
 
 
-def build_prompt(diff: str, style: str, branch: str, repo: str) -> str:
+def build_prompt(style: str, branch: str, repo: str, diff: str = None, ignorediff: bool = False) -> str:
     """Construct a style-aware prompt for commit message generation with context."""
-    return (
+    base = (
         "You are a Git commit message generator.\n"
         "Rules:\n"
         "- Only output the commit message (no explanations, no extra text).\n"
         "- Must be a single short line.\n"
         f"- Style: {style}.\n"
         f"- Repository: {repo}.\n"
-        f"- Branch: {branch}.\n\n"
-        f"Diff:\n{diff}"
+        f"- Branch: {branch}.\n"
     )
+    if not ignorediff and diff:
+        base += f"\nDiff:\n{diff}"
+    else:
+        base += "\n(No diff provided — generate a message based on repo, branch, and style only.)"
+    return base
 
 
-def generate_with_ollama(diff: str, style: str, temperature: float,
-                         model: str, branch: str, repo: str) -> str:
+def generate_with_ollama(style: str, temperature: float, model: str, branch: str, repo: str,
+                         diff: str = None, ignorediff: bool = False) -> str:
     """Generate commit message using Ollama."""
     if ollama is None:
         raise RuntimeError("Ollama not installed. Run `pip install ollama`.")
 
-    prompt = build_prompt(diff, style, branch, repo)
+    prompt = build_prompt(style, branch, repo, diff, ignorediff)
     response = ollama.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -79,14 +83,14 @@ def generate_with_ollama(diff: str, style: str, temperature: float,
     return response["message"]["content"].strip()
 
 
-def generate_with_gemini(diff: str, style: str, temperature: float,
-                         model: str, branch: str, repo: str) -> str:
+def generate_with_gemini(style: str, temperature: float, model: str, branch: str, repo: str,
+                         diff: str = None, ignorediff: bool = False) -> str:
     """Generate commit message using Gemini (genai SDK)."""
     if genai is None:
         raise RuntimeError("Google genai SDK not installed. Run `pip install google-genai`.")
 
     client = genai.Client()
-    prompt = build_prompt(diff, style, branch, repo)
+    prompt = build_prompt(style, branch, repo, diff, ignorediff)
 
     response = client.models.generate_content(
         model=model,
@@ -118,10 +122,12 @@ def main():
                         help="Model to use (default for ollama: gemma3:4b, for gemini: gemini-2.0-flash-lite)")
     parser.add_argument("--commit", action="store_true",
                         help="If set, ask for confirmation before committing with the generated message")
+    parser.add_argument("--ignorediff", action="store_true",
+                        help="Ignore the git diff and generate a commit message from context only")
     args = parser.parse_args()
 
-    diff = get_git_diff()
-    if not diff.strip():
+    diff = None if args.ignorediff else get_git_diff()
+    if not args.ignorediff and (not diff or not diff.strip()):
         print("No staged changes found.")
         sys.exit(0)
 
@@ -133,12 +139,12 @@ def main():
         args.model = "gemini-2.0-flash-lite"
 
     print(f"Using provider: {args.provider}, model: {args.model}, style: {args.style}, "
-          f"temperature: {args.temperature}, branch: {branch}, repo: {repo}")
+          f"temperature: {args.temperature}, branch: {branch}, repo: {repo}, ignorediff: {args.ignorediff}")
 
     if args.provider == "ollama":
-        commit_message = generate_with_ollama(diff, args.style, args.temperature, args.model, branch, repo)
+        commit_message = generate_with_ollama(args.style, args.temperature, args.model, branch, repo, diff, args.ignorediff)
     else:
-        commit_message = generate_with_gemini(diff, args.style, args.temperature, args.model, branch, repo)
+        commit_message = generate_with_gemini(args.style, args.temperature, args.model, branch, repo, diff, args.ignorediff)
 
     print("\nSuggested commit message:\n")
     print(commit_message)
