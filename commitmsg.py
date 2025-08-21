@@ -51,7 +51,12 @@ def get_repo_name() -> str:
 
 
 def build_prompt(
-    style: str, branch: str, repo: str, diff: str = None, ignorediff: bool = False
+    style: str,
+    branch: str,
+    repo: str,
+    diff: str = None,
+    ignorediff: bool = False,
+    context: str = "",
 ) -> str:
     """Construct a detailed prompt for commit message generation with context."""
 
@@ -65,12 +70,13 @@ def build_prompt(
         f"- Branch: {branch} (for context, not required in output).\n"
     )
 
+    if context:
+        base += f"Extra context to use: {context}"
+
     if not ignorediff and diff:
         base += (
             "\nHere is the staged diff:\n"
             f"{diff}\n"
-            "\nFocus on summarizing WHAT and WHY, not HOW.\n"
-            "- Capture the main intent (e.g., feature, bugfix, refactor).\n"
             "- Use file names, function/class names, and key changes if relevant.\n"
         )
     else:
@@ -82,7 +88,6 @@ def build_prompt(
     return base
 
 
-
 def generate_with_ollama(
     style: str,
     temperature: float,
@@ -91,12 +96,13 @@ def generate_with_ollama(
     repo: str,
     diff: str = None,
     ignorediff: bool = False,
+    context: str = "",
 ) -> str:
     """Generate commit message using Ollama."""
     if ollama is None:
         raise RuntimeError("Ollama not installed. Run `pip install ollama`.")
 
-    prompt = build_prompt(style, branch, repo, diff, ignorediff)
+    prompt = build_prompt(style, branch, repo, diff, ignorediff, context)
     response = ollama.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -113,6 +119,7 @@ def generate_with_gemini(
     repo: str,
     diff: str = None,
     ignorediff: bool = False,
+    context: str = "",
 ) -> str:
     """Generate commit message using Gemini (genai SDK)."""
     if genai is None:
@@ -121,7 +128,7 @@ def generate_with_gemini(
         )
 
     client = genai.Client()
-    prompt = build_prompt(style, branch, repo, diff, ignorediff)
+    prompt = build_prompt(style, branch, repo, diff, ignorediff, context)
 
     response = client.models.generate_content(
         model=model,
@@ -177,6 +184,12 @@ def main():
         action="store_true",
         help="Ignore the git diff and generate a commit message from context only",
     )
+    parser.add_argument(
+        "--context",
+        type=str,
+        default="",
+        help="Extra Context for LLM propt",
+    )
     args = parser.parse_args()
 
     diff = None if args.ignorediff else get_git_diff()
@@ -205,6 +218,7 @@ def main():
             repo,
             diff,
             args.ignorediff,
+            args.context,
         )
     else:
         commit_message = generate_with_gemini(
@@ -215,6 +229,7 @@ def main():
             repo,
             diff,
             args.ignorediff,
+            args.context,
         )
 
     print("\nSuggested commit message:\n")
